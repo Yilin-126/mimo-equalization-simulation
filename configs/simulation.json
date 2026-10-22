@@ -1,0 +1,25 @@
+{
+  "system": {
+    "num_subcarriers": 1200,
+    "num_ofdm_symbols": 14,
+    "cp_type": "normal"
+  },
+  "transmitter": {
+    "modulation": "QPSK",
+    "num_tx_antennas": 2
+  },
+  "receiver": {
+    "num_rx_antennas": 2,
+    "equalizer": "MMSE"
+  },
+  "channel": {
+    "model": "AWGN",
+    "snr_db": 10
+  },
+  "simulation": {
+    "random_seed": 42,
+    "snr_start_db": 0,
+    "snr_stop_db": 20,
+    "snr_step_db": 2
+  }
+}
