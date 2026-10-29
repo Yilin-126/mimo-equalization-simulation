@@ -23,5 +23,10 @@
     "snr_start_db": 0,
     "snr_stop_db": 20,
     "snr_step_db": 2
-  }
+  },
+  "performance": {
+    "num_frames": 10,
+    "channel_real": [[1.0, 0.3], [0.2, 0.9]],
+    "channel_imag": [[0.2, -0.1], [0.1, -0.2]]
+}
 }

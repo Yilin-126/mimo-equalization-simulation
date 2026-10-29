@@ -50,12 +50,7 @@ def interpolate_channel(
 
     subcarriers = np.arange(num_subcarriers)
 
-    real = np.interp(
-        subcarriers, pilot_indices, pilot_estimates.real
-    )
-    imag = np.interp(
-        subcarriers, pilot_indices, pilot_estimates.imag
-    )
+    real = np.interp(subcarriers, pilot_indices, pilot_estimates.real)
+    imag = np.interp(subcarriers, pilot_indices, pilot_estimates.imag)
 
     return real + 1j * imag
-

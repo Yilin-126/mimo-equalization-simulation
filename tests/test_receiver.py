@@ -13,9 +13,7 @@ def test_modulation_roundtrip(modulation: str) -> None:
     rng = np.random.default_rng(42)
     bits_per_symbol = 2 if modulation == "QPSK" else 4
 
-    bits = rng.integers(
-        0, 2, size=1000 * bits_per_symbol, dtype=np.int8
-    )
+    bits = rng.integers(0, 2, size=1000 * bits_per_symbol, dtype=np.int8)
 
     symbols = modulate(bits, modulation)
     recovered = demodulate(symbols, modulation)
