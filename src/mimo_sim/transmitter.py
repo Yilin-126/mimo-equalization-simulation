@@ -56,5 +56,45 @@ def ofdm_modulate(
     resource_grid: np.ndarray,
     cp_length: int,
 ) -> np.ndarray:
-    """OFDM modulation interface."""
-    raise NotImplementedError
+    """Perform IFFT and cyclic prefix insertion."""
+    if resource_grid.ndim != 3:
+        raise ValueError("Expected shape (S, Nfft, Nt)")
+
+    fft_size = resource_grid.shape[1]
+
+    if not 0 < cp_length <= fft_size:
+        raise ValueError("Invalid CP length")
+
+    time_signal = np.fft.ifft(resource_grid, axis=1)
+    cyclic_prefix = time_signal[:, -cp_length:, :]
+
+    return np.concatenate(
+        [cyclic_prefix, time_signal],
+        axis=1,
+    )
+
+
+def map_to_resource_grid(
+    symbols: np.ndarray,
+    fft_size: int,
+    num_subcarriers: int,
+) -> np.ndarray:
+    """Map active subcarriers to a centered FFT grid."""
+    if symbols.ndim != 3:
+        raise ValueError("Expected shape (S, K, Nt)")
+
+    if symbols.shape[1] != num_subcarriers:
+        raise ValueError("Subcarrier count mismatch")
+
+    if not 0 < num_subcarriers <= fft_size:
+        raise ValueError("Invalid subcarrier configuration")
+
+    start = (fft_size - num_subcarriers) // 2
+    grid = np.zeros(
+        (symbols.shape[0], fft_size, symbols.shape[2]),
+        dtype=np.complex128,
+    )
+
+    grid[:, start : start + num_subcarriers, :] = symbols
+
+    return np.fft.ifftshift(grid, axes=1)

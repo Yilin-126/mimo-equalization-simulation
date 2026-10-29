@@ -12,9 +12,21 @@ def ofdm_demodulate(
     raise NotImplementedError
 
 
-def demodulate(
-    symbols: np.ndarray,
-    modulation_type: str,
+def ofdm_demodulate(
+    received_signal: np.ndarray,
+    cp_length: int,
+    fft_size: int,
 ) -> np.ndarray:
-    """QPSK/16QAM硬判决解调。"""
-    raise NotImplementedError
+    """Remove cyclic prefix and perform FFT."""
+    if received_signal.ndim != 3:
+        raise ValueError("Expected shape (S, samples, Nr)")
+
+    if not 0 < cp_length <= fft_size:
+        raise ValueError("Invalid CP length")
+
+    if received_signal.shape[1] != fft_size + cp_length:
+        raise ValueError("Invalid OFDM symbol length")
+
+    time_signal = received_signal[:, cp_length:, :]
+
+    return np.fft.fft(time_signal, axis=1)

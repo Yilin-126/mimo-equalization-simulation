@@ -2,7 +2,9 @@
   "system": {
     "num_subcarriers": 1200,
     "num_ofdm_symbols": 14,
-    "cp_type": "normal"
+    "cp_type": "normal",
+    "fft_size": 2048,
+    "cp_length": 144
   },
   "transmitter": {
     "modulation": "QPSK",
