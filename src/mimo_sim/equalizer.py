@@ -1,26 +1,36 @@
-"""MIMO均衡算法模块。
-
-提供ZF和MMSE均衡算法的统一函数接口。
-具体算法将在后续阶段实现。
-"""
+"""ZF and MMSE MIMO equalization."""
 
 import numpy as np
+
+
+def validate_inputs(
+    received_signal: np.ndarray,
+    channel_matrix: np.ndarray,
+) -> None:
+    """Validate MIMO input dimensions."""
+    if received_signal.ndim != 1 or channel_matrix.ndim != 2:
+        raise ValueError("Invalid input dimensions")
+
+    num_rx, num_tx = channel_matrix.shape
+
+    if num_tx == 0 or num_rx < num_tx:
+        raise ValueError("Invalid antenna configuration")
+
+    if received_signal.shape != (num_rx,):
+        raise ValueError("Received signal shape mismatch")
 
 
 def zf_equalize(
     received_signal: np.ndarray,
     channel_matrix: np.ndarray,
 ) -> np.ndarray:
-    """ZF迫零均衡接口。
+    """Perform zero-forcing equalization."""
+    validate_inputs(received_signal, channel_matrix)
 
-    Args:
-        received_signal: 接收信号，形状为(Nr,)。
-        channel_matrix: MIMO信道矩阵，形状为(Nr, Nt)。
+    if np.linalg.matrix_rank(channel_matrix) < channel_matrix.shape[1]:
+        raise ValueError("Channel matrix is rank deficient")
 
-    Returns:
-        均衡后信号，形状为(Nt,)。
-    """
-    raise NotImplementedError("ZF equalizer is not implemented yet.")
+    return np.linalg.lstsq(channel_matrix, received_signal, rcond=None)[0]
 
 
 def mmse_equalize(
@@ -28,14 +38,21 @@ def mmse_equalize(
     channel_matrix: np.ndarray,
     noise_variance: float,
 ) -> np.ndarray:
-    """MMSE最小均方误差均衡接口。
+    """Perform MMSE equalization with unit signal covariance."""
+    validate_inputs(received_signal, channel_matrix)
 
-    Args:
-        received_signal: 接收信号，形状为(Nr,)。
-        channel_matrix: MIMO信道矩阵，形状为(Nr, Nt)。
-        noise_variance: 接收端复噪声的方差。
+    if not np.isfinite(noise_variance) or noise_variance < 0:
+        raise ValueError("Invalid noise variance")
 
-    Returns:
-        均衡后信号，形状为(Nt,)。
-    """
-    raise NotImplementedError("MMSE equalizer is not implemented yet.")
+    if noise_variance == 0:
+        return zf_equalize(received_signal, channel_matrix)
+
+    hermitian = channel_matrix.conj().T
+
+    gram = hermitian @ channel_matrix
+    regularized = gram + noise_variance * np.eye(channel_matrix.shape[1])
+
+    return np.linalg.solve(
+        regularized,
+        hermitian @ received_signal,
+    )
