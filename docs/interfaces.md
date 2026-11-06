@@ -161,3 +161,116 @@ create_frame_samples(
 当前该机制已用于固定信道ZF/MMSE BER扫描，并通过跨场景基础样本测试。
 
 完整的相关信道、多径信道及非理想CSI性能比较尚未实现。
+
+
+
+## 9. 多场景信道接口规范
+
+### 9.1 信道模型变换
+
+模块：`src/mimo_sim/channel_scenarios.py`
+
+接口：
+
+```python
+apply_channel_model(
+    base_channel,
+    model,
+    correlation=0.0,
+)
+```
+
+参数说明：
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `base_channel` | `np.complex128` | 基础信道矩阵，形状 `(Nr, Nt)` |
+| `model` | `str` | `independent` 或 `rx_correlated` |
+| `correlation` | `float` | 接收端相关系数，范围 `0 ≤ ρ < 1` |
+
+返回值：
+
+- `np.complex128` 信道矩阵，形状 `(Nr, Nt)`。
+- 当前相关信道模型要求 `Nr=2`。
+
+### 9.2 多场景样本生成
+
+接口：
+
+```python
+create_scenario_frame(
+    config,
+    snr_index,
+    frame_index,
+    scenario_id,
+    model,
+    num_bits,
+    noise_shape,
+    num_rx,
+    num_tx,
+    correlation=0.0,
+)
+```
+
+返回字典：
+
+| 字段 | 数据类型 | 说明 |
+|---|---|---|
+| `bits` | `np.int8` | 发送比特 |
+| `noise` | `np.complex128` | 单位方差基础噪声 |
+| `base_channel` | `np.complex128` | 基础Rayleigh信道 |
+| `channel` | `np.complex128` | 场景变换后的信道 |
+
+### 9.3 随机数控制参数
+
+配置文件：`configs/simulation.json`
+
+| 参数 | 含义 |
+|---|---|
+| `bit_seed` | 发送比特随机种子 |
+| `noise_seed` | 噪声随机种子 |
+| `channel_seed` | 信道随机种子 |
+| `reuse_realizations` | 是否跨场景复用基础随机样本 |
+| `reuse_across_snr` | 是否跨SNR复用相同帧编号的基础随机样本 |
+
+当两个复用开关均为 `true` 时，相同帧编号在不同信道场景和SNR点下使用相同基础样本。
+
+### 9.4 多场景BER接口
+
+主程序：
+
+`scripts/run_scenario_ber.py`
+
+输出：
+
+- `results/scenario_ber_comparison.csv`
+- `results/scenario_ber_comparison.png`
+
+CSV字段：
+
+| 字段 | 说明 |
+|---|---|
+| `Scenario` | 信道场景名称 |
+| `SNR_dB` | 参考信道接收SNR |
+| `Method` | ZF或MMSE |
+| `BER` | 实测误码率 |
+| `Bits` | 累计测试比特数 |
+| `Errors` | 累计误码数 |
+| `Stop_Reason` | 停止原因 |
+
+同一SNR下所有场景和均衡算法必须共享统计帧数。
+
+噪声方差由参考信道接收功率确定，其他场景使用相同噪声实现。
+
+### 9.5 接口验证
+
+当前已完成：
+
+- 场景随机样本复用测试
+- 独立/相关Rayleigh信道模型测试
+- 多场景BER集成测试
+- 跨SNR样本复用集成测试
+
+全项目Python自动化测试：**93项通过**。
+
+尚未实现的接口扩展包括EPA/EVA多径信道、非理想CSI及更大规模相关MIMO信道。

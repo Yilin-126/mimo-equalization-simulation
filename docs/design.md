@@ -106,3 +106,115 @@ C 接口使用 `double complex`，信道矩阵按行优先方式存储：`h[rx*n
 ## 10. 文档维护要求
 
 每次变更算法、配置、接口或测试，应在同一次 Git 提交中同步更新相关 `docs/*.md` 和 `README.md`。所有结论以**实际代码、测试输出与结果文件**为依据；尚未实现的内容必须明确标记为“计划”或“未实现”。
+
+
+
+## 8. 多场景MIMO信道设计
+
+### 8.1 已实现的信道模型
+
+当前系统在原有AWGN及独立Rayleigh信道基础上，新增接收端空间相关Rayleigh平坦衰落模型。
+
+| 信道模型 | 实现状态 | 说明 |
+|---|---|---|
+| AWGN | 已实现 | 复高斯白噪声 |
+| 独立Rayleigh | 已实现 | 独立复高斯MIMO信道 |
+| 接收端相关Rayleigh | 已实现 | 2×2接收端空间相关，ρ=0.7 |
+| EPA/EVA多径 | 未实现 | 后续扩展 |
+| 非理想CSI | 未集成 | 后续扩展 |
+
+主要模块：
+
+- `src/mimo_sim/channel.py`：基础信道及噪声模型
+- `src/mimo_sim/channel_scenarios.py`：独立及相关Rayleigh场景
+- `scripts/run_scenario_ber.py`：多场景BER性能评估
+
+### 8.2 接收端相关信道模型
+
+使用共同的独立Rayleigh信道矩阵H0，通过相关性变换得到：
+
+`H_corr = L × H0`
+
+其中：
+
+`L = [[1, 0], [ρ, sqrt(1-ρ²)]]`
+
+当前采用ρ=0.7。
+
+两种场景复用相同的基础信道随机样本，确保差异来自信道相关性变换。
+
+## 9. 实验变量控制设计
+
+随机数管理模块：
+
+`src/mimo_sim/random_control.py`
+
+使用三个独立随机种子，分别控制：
+
+- 发送比特
+- 接收噪声
+- 基础信道
+
+### 9.1 场景间复用
+
+当 `reuse_realizations=true` 时，不同场景共享相同基础随机样本。
+
+当其为 `false` 时，不同场景使用独立但可重复的随机流。
+
+### 9.2 跨SNR复用
+
+当 `reuse_across_snr=true` 时，同一帧编号在不同SNR点复用相同的发送比特、基础噪声和基础信道。
+
+SNR变化通过调整噪声幅度实现。
+
+### 9.3 多场景共同停止
+
+两种信道及ZF/MMSE算法使用相同的统计帧数。
+
+当前配置最少20帧，最多30帧，每帧67,200比特。
+
+使用参考信道接收功率确定噪声方差，避免不同信道场景独立调整噪声幅度。
+
+## 10. 多场景性能验证
+
+当前实验包括：
+
+- 2×2 MIMO-OFDM
+- QPSK
+- 独立Rayleigh与接收端相关Rayleigh
+- ZF与MMSE
+- Perfect CSI
+- SNR范围0–20 dB
+
+本轮实验中，各SNR点统计20帧，共1,344,000比特。
+
+在当前测试条件下：
+
+- MMSE的BER低于ZF。
+- 接收端相关信道的BER高于独立信道。
+- BER随SNR提高整体呈下降趋势。
+
+结果文件：
+
+- `results/scenario_ber_comparison.csv`
+- `results/scenario_ber_comparison.png`
+
+目前实验仍采用简化的频率平坦衰落信道，尚未实现EPA/EVA多径及非理想CSI性能比较。
+
+## 11. 工程验证状态
+
+当前项目已完成：
+
+- Python自动化测试：93项通过
+- C/Python冻结参考向量比较：16项通过
+- C/Python接口级性能测试
+- 原生C计算路径性能测试
+- 多场景共享随机样本验证
+- 跨SNR随机样本复用集成验证
+
+具体接口与统计方法见：
+
+- `docs/interfaces.md`
+- `docs/adaptive_ber_method.md`
+- `docs/c_equalizer_design.md`
+- `docs/c_python_validation.md`

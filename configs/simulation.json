@@ -30,13 +30,35 @@
     "max_bits_per_snr": 2016000,
     "channel_real": [[1.0, 0.3], [0.2, 0.9]],
     "channel_imag": [[0.2, -0.1], [0.1, -0.2]]
-},
+  },
+
   "random_control": {
+      "enabled": true,
+      "bit_seed": 20261106,
+      "noise_seed": 20261107,
+      "channel_seed": 20261108,
+      "reuse_realizations": true,
+      "reuse_across_snr": true
+  },
+
+  "scenario_comparison": {
     "enabled": true,
-    "bit_seed": 20261106,
-    "noise_seed": 20261107,
-    "channel_seed": 20261108,
-    "reuse_realizations": true
+    "scenarios": [
+        {
+            "name": "independent",
+            "model": "independent",
+            "correlation": 0.0
+        },
+        {
+            "name": "rx_correlated_0p7",
+            "model": "rx_correlated",
+            "correlation": 0.7
+        }
+    ],
+    "noise_policy": "reference_receive_power",
+    "reference_scenario": "independent",
+    "shared_frame_stopping": true,
+    "min_frames_per_snr": 20
   }
 }
 

@@ -1,5 +1,7 @@
 """Reproducible random control for MIMO-OFDM experiments."""
 
+import hashlib
+
 import numpy as np
 
 
@@ -7,8 +9,8 @@ def create_rngs(config: dict) -> dict[str, np.random.Generator]:
     """Create independent random generators for simulation.
 
     Args:
-        config: Configuration dictionary containing
-            random_control and its three seed values.
+        config: Configuration containing random_control
+            and three independent random seeds.
 
     Returns:
         Dictionary containing generators named
@@ -16,8 +18,8 @@ def create_rngs(config: dict) -> dict[str, np.random.Generator]:
 
     Raises:
         KeyError: If required seed fields are missing.
-        TypeError: If seed values are invalid types.
-        ValueError: If seed values are outside valid ranges.
+        TypeError: If seed values have invalid types.
+        ValueError: If seed values are invalid.
     """
     seeds = config["random_control"]
 
@@ -35,78 +37,135 @@ def create_frame_samples(
     num_bits: int,
     noise_shape: tuple[int, ...],
     channel_shape: tuple[int, ...],
+    scenario_id: str = "default",
 ) -> dict[str, np.ndarray]:
-    """Generate reproducible common random samples for one frame.
+    """Generate deterministic random samples for a simulation frame.
 
-    Each random stream is initialized from its configured seed,
-    SNR index, and frame index. Thus, generating one frame does
-    not advance or change the random data of another frame.
+    Independent random streams are used for transmitted bits,
+    complex noise, and channel innovations.
 
-    The resulting noise and channel arrays contain unit-variance
-    circularly symmetric complex Gaussian samples.
+    When reuse_realizations is True, scenario_id is ignored,
+    so different scenarios share the same random samples.
+
+    When reuse_realizations is False, scenario_id is included
+    in the seed sequence. Different scenario identifiers
+    therefore produce independent reproducible streams.
 
     Args:
-        config: Configuration containing random_control seeds.
-        snr_index: Nonnegative index of the SNR test point.
-        frame_index: Nonnegative index of the simulation frame.
+        config: Simulation configuration containing
+            random_control settings and seeds.
+        snr_index: Nonnegative SNR point index.
+        frame_index: Nonnegative frame index.
         num_bits: Positive number of transmitted bits.
-        noise_shape: Required shape of the complex noise array.
-        channel_shape: Required shape of the complex channel
-            innovation array.
+        noise_shape: Shape of the complex noise array.
+        channel_shape: Shape of the complex channel array.
+        scenario_id: Nonempty identifier for the experiment
+            scenario. Defaults to "default" for compatibility.
 
     Returns:
-        Dictionary with three independent arrays:
-            bits: Binary int8 array with shape (num_bits,).
-            noise: Unit-variance complex Gaussian noise array.
-            channel: Unit-variance complex Gaussian channel
-                innovation array.
-
-        Identical inputs generate identical arrays regardless
-        of which other frames were generated previously.
+        Dictionary containing:
+            bits: Binary int8 array of shape (num_bits,).
+            noise: Unit-variance complex Gaussian array
+                with shape noise_shape.
+            channel: Unit-variance complex Gaussian array
+                with shape channel_shape.
 
     Raises:
-        ValueError: If indices, dimensions, or the enabled
-            configuration are invalid.
+        KeyError: If required configuration values are missing.
+        TypeError: If configuration or seed types are invalid.
+        ValueError: If indices, shapes, flags, or scenario
+            identifier are invalid.
     """
     control = config["random_control"]
 
     if control.get("enabled") is not True:
-        raise ValueError("Common random control must be enabled")
+        raise ValueError("Random control must be enabled")
+
+    reuse = control.get("reuse_realizations", True)
+    reuse_across_snr = control.get("reuse_across_snr", False)
+
+    if not isinstance(reuse, bool):
+        raise ValueError("reuse_realizations must be boolean")
+
+    if not isinstance(reuse_across_snr, bool):
+        raise ValueError("reuse_across_snr must be boolean")
+
+    effective_snr_index = 0 if reuse_across_snr else snr_index
 
     if (
-        not isinstance(snr_index, int)
-        or not isinstance(frame_index, int)
-        or not isinstance(num_bits, int)
+        type(snr_index) is not int
+        or type(frame_index) is not int
+        or type(num_bits) is not int
         or min(snr_index, frame_index) < 0
         or num_bits <= 0
     ):
         raise ValueError("Invalid frame sampling parameters")
 
+    if not isinstance(scenario_id, str) or not scenario_id:
+        raise ValueError("scenario_id must be a nonempty string")
+
     for shape in (noise_shape, channel_shape):
         if (
             not isinstance(shape, tuple)
             or not shape
-            or any(not isinstance(size, int) or size <= 0 for size in shape)
+            or any(type(size) is not int or size <= 0 for size in shape)
         ):
             raise ValueError("Invalid sample shape")
 
+    scenario_words = []
+
+    if not reuse:
+        digest = hashlib.sha256(scenario_id.encode("utf-8")).digest()
+
+        scenario_words = [
+            int.from_bytes(digest[0:4], "little"),
+            int.from_bytes(digest[4:8], "little"),
+        ]
+
     def make_rng(seed: int) -> np.random.Generator:
-        """Initialize a deterministic generator for this frame.
+        """Create a deterministic random generator.
 
         Args:
-            seed: Nonnegative base seed from the configuration.
+            seed: Nonnegative base seed.
 
         Returns:
-            NumPy generator indexed by the SNR and frame.
+            Generator indexed by SNR, frame, and optionally
+            the scenario identifier.
 
         Raises:
-            ValueError: If the base seed is invalid.
+            ValueError: If the seed is invalid.
         """
-        if not isinstance(seed, int) or seed < 0:
+        if type(seed) is not int or seed < 0:
             raise ValueError("Invalid random seed")
 
-        sequence = np.random.SeedSequence([seed, snr_index, frame_index])
+        sequence = np.random.SeedSequence(
+            [
+                seed,
+                effective_snr_index,
+                frame_index,
+                *scenario_words,
+            ]
+        )
+
         return np.random.default_rng(sequence)
+
+    def complex_gaussian(
+        rng: np.random.Generator,
+        shape: tuple[int, ...],
+    ) -> np.ndarray:
+        """Generate unit-variance circular complex Gaussian data.
+
+        Args:
+            rng: NumPy random generator.
+            shape: Output array shape.
+
+        Returns:
+            Complex NumPy array with unit average power.
+        """
+        real = rng.standard_normal(shape)
+        imag = rng.standard_normal(shape)
+
+        return (real + 1j * imag) / np.sqrt(2)
 
     bits_rng = make_rng(control["bit_seed"])
     noise_rng = make_rng(control["noise_seed"])
@@ -119,28 +178,15 @@ def create_frame_samples(
         dtype=np.int8,
     )
 
-    def complex_gaussian(
-        rng: np.random.Generator,
-        shape: tuple[int, ...],
-    ) -> np.ndarray:
-        """Generate unit-variance complex Gaussian samples.
+    noise = complex_gaussian(
+        noise_rng,
+        noise_shape,
+    )
 
-        Args:
-            rng: NumPy random generator.
-            shape: Output array dimensions.
-
-        Returns:
-            Complex array with independent real and
-            imaginary standard-normal components scaled
-            by 1/sqrt(2).
-        """
-        real = rng.standard_normal(shape)
-        imag = rng.standard_normal(shape)
-
-        return (real + 1j * imag) / np.sqrt(2)
-
-    noise = complex_gaussian(noise_rng, noise_shape)
-    channel = complex_gaussian(channel_rng, channel_shape)
+    channel = complex_gaussian(
+        channel_rng,
+        channel_shape,
+    )
 
     return {
         "bits": bits,

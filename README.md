@@ -96,7 +96,7 @@ python -m scripts.plot_constellation
 python -m scripts.plot_adaptive_ber
 ```
 
-最近一次完整测试结果：**70 passed**。
+最近一次完整测试结果：**93 passed**。
 
 输出包括：
 
@@ -178,9 +178,98 @@ gcc -std=c11 -O2 -Wall -Wextra -Wpedantic c_src/benchmark_core.c c_src/equalizer
 **第一周：** 工程框架、配置文件、接口和开发环境。  
 **第二周：** Python 调制/OFDM/信道/均衡、自动化测试、BER曲线及星座图。  
 **第三周：** 冻结 Python 基准、C ZF/MMSE、16项数值对齐、自适应 BER、测试及技术文档。  
-**补充工程基线：** 独立随机流、70项测试、固定信道复现、12组 Python/C-ctypes 性能数据、12组原生 C 计时以及对应文档。
+**补充工程基线：** 独立随机流、93项测试、固定信道复现、12组 Python/C-ctypes 性能数据、12组原生 C 计时以及对应文档。
 
 后续计划：跨信道共同基础随机样本控制、空间相关与多径信道、非理想 CSI、C 批处理接口、4×4 扩展，以及严格配对的纯接口开销测试。以上均不应视为当前已完成成果。
+
+
+## 多场景Rayleigh信道仿真与变量控制
+
+### 1. 已实现的信道场景
+
+当前支持两种2×2频率平坦Rayleigh信道：
+
+| 场景 | 模型 | 参数 |
+|---|---|---|
+| independent | 独立Rayleigh信道 | 无空间相关 |
+| rx_correlated_0p7 | 接收端相关Rayleigh信道 | ρ=0.7 |
+
+信道模型位于 `src/mimo_sim/channel_scenarios.py`。
+
+当前主BER比较采用Perfect CSI，尚未实现EPA/EVA多径和非理想CSI的性能比较。
+
+### 2. 随机变量控制
+
+随机数管理模块为 `src/mimo_sim/random_control.py`。
+
+使用独立随机种子控制发送比特、基础噪声及基础信道。
+
+配置文件 `configs/simulation.json` 提供：
+
+- `reuse_realizations`：不同信道场景是否复用基础随机样本。
+- `reuse_across_snr`：不同SNR点是否复用相同帧编号的基础随机样本。
+
+正式受控对比实验中两个参数均设置为 `true`。
+
+同一帧编号下，发送数据、基础噪声和基础信道随机样本保持一致。噪声幅度根据目标SNR调整。
+
+### 3. 多场景BER统计
+
+主脚本：
+
+`scripts/run_scenario_ber.py`
+
+运行命令：
+
+```powershell
+python -m scripts.run_scenario_ber
+```
+
+实验采用：
+
+- 2×2 MIMO-OFDM
+- QPSK
+- Perfect CSI
+- SNR范围0–20 dB，步长2 dB
+- 每个SNR至少20帧
+- 每帧67,200比特
+- 每个SNR最大30帧
+
+所有场景和算法使用相同的帧数量。
+
+噪声方差由独立Rayleigh参考信道的接收功率计算，其他场景共用相同的噪声实现。因此图中的SNR代表参考信道目标接收SNR。
+
+结果文件：
+
+- `results/scenario_ber_comparison.csv`
+- `results/scenario_ber_comparison.png`
+
+当前实验观察到：在所测试条件下，相关Rayleigh信道的BER高于独立Rayleigh信道，MMSE通常优于ZF。
+
+### 4. 自动化测试
+
+运行：
+
+```powershell
+python -m pytest tests/ -q
+```
+
+最新验证结果：
+
+**93 passed**
+
+测试包含随机数复用开关、跨SNR复用、信道场景模型、多场景BER可复现性及集成验证。
+
+### 5. 技术文档
+
+- `docs/design.md`：系统设计及多场景信道方案
+- `docs/interfaces.md`：模块接口和数据维度规范
+- `docs/adaptive_ber_method.md`：BER统计与随机变量控制
+- `docs/c_equalizer_design.md`：C均衡模块设计
+- `docs/c_python_validation.md`：C/Python数值与性能验证
+
+相关信道场景目前仅实现2×2接收端相关的简化平坦衰落模型。EPA/EVA多径、非理想CSI以及更一般的空间相关模型仍属于后续扩展。
+
 
 ## 10. 项目仓库
 

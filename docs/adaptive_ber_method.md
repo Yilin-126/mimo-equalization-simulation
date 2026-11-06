@@ -334,3 +334,142 @@ python -m scripts.plot_adaptive_ber
 两种策略不可混用，实验报告必须说明采用哪种策略。
 
 此外，配置项 `reuse_realizations` 尚未实现可切换行为，目前不能认为多信道场景控制已经全部完成。
+
+
+## 14. 跨SNR共享随机样本机制
+
+为保证不同SNR条件下的实验具有可比性，新增
+`reuse_across_snr` 配置项。
+
+配置位置：`configs/simulation.json`
+
+```json
+"reuse_across_snr": true
+```
+
+当该配置为 `true` 时，同一帧编号在不同SNR点复用相同的：
+
+- 发送比特序列
+- 基础复高斯噪声样本
+- 基础复高斯信道样本
+
+仅根据当前SNR调整噪声幅度。
+
+当配置为 `false` 时，不同SNR使用独立、可复现的随机数序列。
+
+实现文件：`src/mimo_sim/random_control.py`
+
+已通过随机数单元测试及多场景BER集成测试验证。
+
+## 15. 独立与相关Rayleigh信道比较
+
+新增两种平坦衰落信道场景：
+
+| 场景 | 模型 | 参数 |
+|---|---|---|
+| independent | 独立Rayleigh信道 | 无空间相关 |
+| rx_correlated_0p7 | 接收端相关Rayleigh信道 | 相关系数0.7 |
+
+信道模型实现：
+
+`src/mimo_sim/channel_scenarios.py`
+
+仿真程序：
+
+`scripts/run_scenario_ber.py`
+
+两种信道共享相同的发送数据、基础信道样本和基础噪声样本。
+
+相关信道通过对独立复高斯信道矩阵执行接收端相关性变换生成。
+
+## 16. 多场景噪声与停止规则
+
+### 16.1 噪声归一化
+
+采用参考信道接收功率策略：
+
+`noise_variance = reference_power / 10^(SNR_dB/10)`
+
+其中，`reference_power` 由独立Rayleigh参考信道的无噪声接收信号计算。
+
+同一帧下，不同信道场景使用完全相同的噪声样本及噪声方差。
+
+因此横轴SNR表示参考信道的目标接收SNR，不代表所有场景的实际接收SNR完全相同。
+
+### 16.2 统一停止条件
+
+多场景比较使用统一的统计帧数。
+
+当前参数：
+
+- 最少统计20帧
+- 最多统计30帧
+- 每个算法目标累计200个误码
+- 每帧67,200比特
+
+达到最少20帧后，只有全部四组结果均达到目标误码数，才允许提前停止。
+
+否则继续统计，直至达到最大测试预算。
+
+这保证同一SNR下四条BER曲线使用相同的测试比特数。
+
+## 17. 多场景实验结果
+
+当前实验配置：
+
+- 2×2 MIMO-OFDM
+- QPSK
+- Perfect CSI
+- SNR：0–20 dB，间隔2 dB
+- 接收端相关系数：0.7
+- 每SNR统计20帧，共1,344,000比特
+
+本轮实测结果表明：
+
+1. ZF与MMSE的BER整体随SNR提高而下降。
+2. 在当前条件下，相关Rayleigh信道的BER高于独立Rayleigh信道。
+3. MMSE在本轮测试点表现出低于ZF的BER。
+4. 跨SNR复用基础随机样本后，曲线的随机波动有所减小。
+
+结果文件：
+
+- `results/scenario_ber_comparison.csv`
+- `results/scenario_ber_comparison.png`
+
+上述结果仍属于有限信道实现数量下的仿真统计，不代表所有信道条件下的严格性能界限。
+
+## 18. 自动化验证
+
+新增测试：
+
+- `tests/test_reuse_realizations.py`
+- `tests/test_reuse_across_snr.py`
+- `tests/test_channel_scenarios.py`
+- `tests/test_scenario_ber_integration.py`
+- `tests/test_snr_reuse_integration.py`
+
+验证内容包括：
+
+- 不同信道场景共享基础随机样本
+- 不同SNR复用相同帧编号的基础样本
+- 场景复用开关的实际行为
+- BER结果可重复性
+- 同一SNR下各算法统计比特数一致
+- BER与实际误码计数一致
+
+当前全项目自动化测试结果：
+
+**93 passed**
+
+## 19. 尚未完成的扩展
+
+当前已实现独立和接收端相关Rayleigh平坦衰落信道。
+
+以下功能尚未完成：
+
+- EPA/EVA等频率选择性多径信道
+- 非理想CSI下的均衡性能比较
+- 更多相关系数及大规模天线配置
+- 更全面的信道统计置信区间评估
+
+后续扩展应继续遵循统一随机样本、明确噪声归一化规则及共同统计预算的工程要求。
