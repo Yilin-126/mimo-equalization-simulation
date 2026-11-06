@@ -1,8 +1,8 @@
 """Validate C ZF/MMSE equalizers against frozen Python references."""
 
-import os
 import ctypes
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -15,13 +15,16 @@ TOLERANCE = 1e-8
 
 
 def decode_complex(values: list) -> np.ndarray:
-    """Decode stored real/imag pairs.
+    """Decode complex numbers stored as real and imaginary pairs.
 
     Args:
-        values: JSON data with [real, imag] pairs.
+        values: Nested JSON-compatible arrays containing
+            [real, imag] pairs. Supports complex vectors
+            and matrices.
 
     Returns:
-        Contiguous NumPy complex128 array.
+        Contiguous NumPy complex128 array with the same
+        leading dimensions as the input data.
     """
     data = np.asarray(values, dtype=np.float64)
     result = data[..., 0] + 1j * data[..., 1]
@@ -29,13 +32,23 @@ def decode_complex(values: list) -> np.ndarray:
 
 
 def load_library() -> ctypes.CDLL:
-    """Load the compiled C equalizer library.
+    """Load the compiled C equalizer dynamic library.
+
+    Configure ctypes argument and return types for the
+    ZF and MMSE equalizer functions.
+
+    Args:
+        None. The DLL path is defined by DLL_PATH
+        relative to the project root.
 
     Returns:
-        DLL with configured ZF/MMSE function signatures.
+        Loaded ctypes.CDLL object with configured
+        zf_equalize_c and mmse_equalize_c signatures.
 
     Raises:
-        FileNotFoundError: If the DLL has not been compiled.
+        FileNotFoundError: If equalizer.dll does not exist.
+        OSError: If the DLL or its dependencies cannot
+            be loaded.
     """
     if not DLL_PATH.exists():
         raise FileNotFoundError(f"Missing DLL: {DLL_PATH}")
@@ -70,21 +83,33 @@ def run_c_equalizer(
     method: str,
     noise_variance: float,
 ) -> np.ndarray:
-    """Execute a C equalizer on complex128 arrays.
+    """Execute the C ZF or MMSE equalizer using complex128 data.
+
+    Python complex128 arrays are passed to C through
+    contiguous memory pointers. The C implementation
+    supports square 1x1 and 2x2 MIMO channel matrices.
 
     Args:
-        library: Loaded C dynamic library.
-        channel: Row-major MIMO channel, shape (n, n).
-        received: Received signal, shape (n,).
-        method: Either ZF or MMSE.
-        noise_variance: Complex AWGN variance per receive antenna.
+        library: Loaded C dynamic library containing
+            the equalizer functions.
+        channel: Complex MIMO channel matrix with
+            shape (n, n), stored in row-major order.
+        received: Received complex signal vector
+            with shape (n,).
+        method: Equalization method, either "ZF"
+            or "MMSE".
+        noise_variance: Nonnegative complex AWGN
+            variance per receive antenna, used by MMSE.
 
     Returns:
-        Estimated complex symbol vector, shape (n,).
+        Estimated complex128 transmitted symbol vector
+        with shape (n,).
 
     Raises:
-        ValueError: If dimensions or method are invalid.
-        RuntimeError: If the C function reports a failure.
+        ValueError: If matrix dimensions are invalid,
+            n is not 1 or 2, or method is unsupported.
+        RuntimeError: If the C equalizer returns a
+            nonzero error status.
     """
     h = np.ascontiguousarray(channel, dtype=np.complex128)
     y = np.ascontiguousarray(received, dtype=np.complex128)
@@ -117,10 +142,29 @@ def run_c_equalizer(
 
 
 def main() -> None:
-    """Compare all C results against the frozen reference dataset.
+    """Validate C equalizers against frozen Python test vectors.
+
+    Load the reference JSON dataset and compare C ZF/MMSE
+    outputs with Python reference results.
+
+    Calculate the maximum absolute complex error for
+    each comparison and check it against TOLERANCE.
+
+    Args:
+        None. Reference data is loaded from
+        tests/fixtures/equalizer_reference.json.
 
     Returns:
-        None. Raises AssertionError when validation fails.
+        None. Prints PASS or FAIL for each comparison,
+        the number of successful comparisons, and
+        the maximum absolute numerical error.
+
+    Raises:
+        FileNotFoundError: If the DLL or reference file
+            does not exist.
+        RuntimeError: If a C equalizer reports failure.
+        AssertionError: If any numerical comparison
+            exceeds the specified tolerance.
     """
     library = load_library()
 

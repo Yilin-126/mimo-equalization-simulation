@@ -7,6 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from src.mimo_sim.ber_stopping import get_stop_reason
 from src.mimo_sim.channel import add_awgn
 from src.mimo_sim.receiver import demodulate, ofdm_demodulate
 from src.mimo_sim.transmitter import (
@@ -20,6 +21,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
+    """Run adaptive ZF/MMSE BER-SNR simulations for MIMO-OFDM.
+
+    Load simulation parameters from configs/simulation.json,
+    generate OFDM signals, transmit them through a fixed
+    MIMO channel with AWGN, and compare ZF and MMSE
+    equalization using perfect channel knowledge.
+
+    At each SNR, both equalizers process identical transmitted
+    bits and received signals. The simulation stops when both
+    methods accumulate the target number of bit errors or
+    the maximum frame budget is exhausted.
+
+    Args:
+        None. Simulation parameters are loaded from
+        configs/simulation.json relative to the project root.
+
+    Returns:
+        None. Simulation results are saved to:
+            results/ber_comparison.csv
+            results/ber_comparison.png
+
+        The CSV includes SNR, BER, tested bit counts,
+        error counts, and the stopping reason.
+
+    Raises:
+        FileNotFoundError: If the configuration file is missing.
+        KeyError: If required configuration fields are missing.
+        ValueError: If modulation, MIMO channel configuration,
+            or BER stopping parameters are invalid.
+        OSError: If output files cannot be created or written.
+    """
     with (ROOT / "configs" / "simulation.json").open(encoding="utf-8") as file:
         config = json.load(file)
 
@@ -52,6 +84,17 @@ def main() -> None:
     )
 
     results = []
+
+    target_errors = int(perf["target_errors"])
+    max_bits = int(perf["max_bits_per_snr"])
+
+    bits_per_frame = s * k * nt * bits_per_symbol
+
+    if target_errors <= 0 or max_bits < bits_per_frame:
+        raise ValueError("Invalid BER stopping parameters")
+
+    max_frames = max_bits // bits_per_frame
+
     start = (nfft - k) // 2
     wh = h.conj().T
     wzf = np.linalg.pinv(h)
@@ -62,7 +105,7 @@ def main() -> None:
         errors_mmse = 0
         total_bits = 0
 
-        for _ in range(perf["num_frames"]):
+        for _ in range(max_frames):
             bits = generate_bits(s * k * nt * bits_per_symbol, rng)
             symbols = modulate(bits, modulation).reshape(s, k, nt)
 
@@ -93,10 +136,44 @@ def main() -> None:
             errors_mmse += np.count_nonzero(bits_mmse != bits)
             total_bits += bits.size
 
+            if (
+                get_stop_reason(
+                    errors_zf,
+                    errors_mmse,
+                    total_bits,
+                    target_errors,
+                    max_bits,
+                )
+                is not None
+            ):
+                break
+
         ber_zf = errors_zf / total_bits
         ber_mmse = errors_mmse / total_bits
 
-        results.append((snr_db, ber_zf, ber_mmse, total_bits))
+        stop_reason = (
+            get_stop_reason(
+                errors_zf,
+                errors_mmse,
+                total_bits,
+                target_errors,
+                max_bits,
+            )
+            or "max_bits_reached"
+        )
+
+        results.append(
+            (
+                snr_db,
+                ber_zf,
+                ber_mmse,
+                total_bits,
+                errors_zf,
+                errors_mmse,
+                stop_reason,
+            )
+        )
+
         print(f"SNR={snr_db:>3} dB | " f"ZF={ber_zf:.6f} | MMSE={ber_mmse:.6f}")
 
     output = ROOT / "results"
@@ -106,7 +183,17 @@ def main() -> None:
         "w", newline="", encoding="utf-8"
     ) as file:
         writer = csv.writer(file)
-        writer.writerow(["SNR_dB", "ZF_BER", "MMSE_BER", "Bits"])
+        writer.writerow(
+            [
+                "SNR_dB",
+                "ZF_BER",
+                "MMSE_BER",
+                "Bits",
+                "ZF_Errors",
+                "MMSE_Errors",
+                "Stop_Reason",
+            ]
+        )
         writer.writerows(results)
 
     snr = np.array([r[0] for r in results])

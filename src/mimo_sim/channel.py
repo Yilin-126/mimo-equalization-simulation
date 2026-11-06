@@ -1,4 +1,4 @@
-"""MIMO信道模型。"""
+"""MIMO channel models."""
 
 import numpy as np
 
@@ -8,7 +8,20 @@ def add_awgn(
     noise_variance: float,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Add complex AWGN with specified noise variance."""
+    """Add complex additive white Gaussian noise to a signal.
+
+    Args:
+        signal: Input complex signal array of arbitrary shape.
+        noise_variance: Nonnegative complex noise variance per sample.
+        rng: NumPy random generator.
+
+    Returns:
+        Noisy complex array with the same shape as the input.
+
+    Raises:
+        TypeError: If the input signal is not complex.
+        ValueError: If the signal is empty or noise variance is negative.
+    """
     if not np.iscomplexobj(signal):
         raise TypeError("Signal must be complex")
 
@@ -27,7 +40,20 @@ def generate_mimo_channel(
     num_rx: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Generate an i.i.d. Rayleigh MIMO channel matrix."""
+    """Generate an independent Rayleigh fading MIMO channel matrix.
+
+    Args:
+        num_tx: Number of transmit antennas (Nt).
+        num_rx: Number of receive antennas (Nr).
+        rng: NumPy random generator.
+
+    Returns:
+        Complex channel matrix with shape (Nr, Nt).
+        Each coefficient follows CN(0, 1).
+
+    Raises:
+        ValueError: If either antenna count is not positive.
+    """
     if num_tx <= 0 or num_rx <= 0:
         raise ValueError("Antenna counts must be positive")
 
@@ -46,7 +72,23 @@ def generate_frequency_channel(
     num_rx: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Generate a frequency-flat MIMO channel over an OFDM grid."""
+    """Generate a frequency-flat MIMO channel over an OFDM grid.
+
+    Args:
+        num_symbols: Number of OFDM symbols (S).
+        num_subcarriers: Number of subcarriers (K).
+        num_tx: Number of transmit antennas (Nt).
+        num_rx: Number of receive antennas (Nr).
+        rng: NumPy random generator.
+
+    Returns:
+        Complex channel array with shape (S, K, Nr, Nt).
+        The same MIMO channel matrix is repeated over all
+        OFDM symbols and subcarriers.
+
+    Raises:
+        ValueError: If any dimension is not positive.
+    """
     if min(num_symbols, num_subcarriers, num_tx, num_rx) <= 0:
         raise ValueError("All dimensions must be positive")
 

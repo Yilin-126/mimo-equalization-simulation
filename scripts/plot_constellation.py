@@ -19,6 +19,38 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
+    """Plot QPSK constellations before and after MIMO equalization.
+
+    Load simulation parameters from configs/simulation.json,
+    generate random QPSK symbols, and transmit them through
+    a fixed 2x2 MIMO channel with complex AWGN.
+
+    Recover the received OFDM resource grid using FFT,
+    then apply ZF and MMSE equalization with perfect
+    channel state information.
+
+    Plot three constellation diagrams:
+        1. Received symbols before equalization (Rx 1).
+        2. Symbols after ZF equalization (Stream 1).
+        3. Symbols after MMSE equalization (Stream 1).
+
+    Args:
+        None. All simulation parameters are loaded from
+        configs/simulation.json relative to the project root.
+
+    Returns:
+        None. Saves a constellation comparison figure to
+        results/constellation_comparison.png and prints
+        the output path.
+
+    Raises:
+        FileNotFoundError: If the configuration file is missing.
+        KeyError: If required configuration fields are missing.
+        ValueError: If the channel is not a valid 2x2 matrix
+            or the underlying signal parameters are invalid.
+        numpy.linalg.LinAlgError: If the MMSE matrix solve fails.
+        OSError: If the output figure cannot be saved.
+    """
     with (ROOT / "configs" / "simulation.json").open(encoding="utf-8") as file:
         config = json.load(file)
 
