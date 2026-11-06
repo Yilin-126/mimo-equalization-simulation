@@ -9,6 +9,7 @@ import numpy as np
 
 from src.mimo_sim.ber_stopping import get_stop_reason
 from src.mimo_sim.channel import add_awgn
+from src.mimo_sim.random_control import create_rngs
 from src.mimo_sim.receiver import demodulate, ofdm_demodulate
 from src.mimo_sim.transmitter import (
     generate_bits,
@@ -76,7 +77,10 @@ def main() -> None:
     if h.shape != (nr, nt) or np.linalg.matrix_rank(h) < nt:
         raise ValueError("Invalid MIMO channel matrix")
 
-    rng = np.random.default_rng(sim["random_seed"])
+    rngs = create_rngs(config)
+    bits_rng = rngs["bits"]
+    noise_rng = rngs["noise"]
+
     snr_values = np.arange(
         sim["snr_start_db"],
         sim["snr_stop_db"] + 1,
@@ -106,7 +110,7 @@ def main() -> None:
         total_bits = 0
 
         for _ in range(max_frames):
-            bits = generate_bits(s * k * nt * bits_per_symbol, rng)
+            bits = generate_bits(s * k * nt * bits_per_symbol, bits_rng)
             symbols = modulate(bits, modulation).reshape(s, k, nt)
 
             grid = map_to_resource_grid(symbols, nfft, k)
@@ -115,7 +119,7 @@ def main() -> None:
 
             signal_power = np.mean(np.abs(clean) ** 2)
             noise_var = signal_power / (10 ** (snr_db / 10))
-            rx = add_awgn(clean, noise_var, rng)
+            rx = add_awgn(clean, noise_var, noise_rng)
 
             rx_grid = ofdm_demodulate(rx, cp, nfft)
             centered = np.fft.fftshift(rx_grid, axes=1)

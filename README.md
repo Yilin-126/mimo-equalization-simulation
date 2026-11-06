@@ -1,456 +1,187 @@
-﻿# MIMO Equalization Simulation
+﻿# MIMO 均衡算法链路仿真与性能评估
 
-Python-based simulation and performance evaluation of MIMO-OFDM physical-layer equalization algorithms, with C implementations and numerical cross-validation.
+> 项目类型：无线通信物理层算法仿真与工程验证  
+> 主要语言：Python、C  
+> 项目仓库：https://github.com/Yilin-126/mimo-equalization-simulation
 
-The project is inspired by 5G NR physical-layer concepts. It is a simplified research and learning simulation, not a complete 3GPP-compliant 5G NR implementation.
+## 1. 项目概述
 
-## 1. Project Overview
+本项目围绕 MIMO-OFDM 物理层接收与均衡算法，构建可复现的 Python 链路仿真环境，并实现小规模 C 语言 ZF/MMSE 均衡器。通过冻结 Python 基准向量、跨语言数值对齐、BER-SNR 自适应统计以及执行耗时测试，评估算法正确性与工程实现边界。
 
-The project covers:
+本项目参考 5G NR 物理层概念，属于**简化链路仿真**，并非完整的 3GPP NR 标准实现。
 
-- QPSK and 16QAM modulation and demodulation
-- OFDM transmission and reception
-- AWGN and Rayleigh MIMO channel models
-- Least-squares (LS) pilot-based channel estimation
-- Frequency-domain channel interpolation
-- Zero-Forcing (ZF) and Minimum Mean Square Error (MMSE) equalization
-- Bit Error Rate (BER), Error Vector Magnitude (EVM), and Mean Squared Error (MSE)
-- Adaptive BER-SNR performance evaluation
-- C implementations of ZF/MMSE equalizers
-- C/Python numerical validation using frozen reference vectors
+### 1.1 已完成功能
 
-The main simulation uses a 2x2 MIMO-OFDM link with a fixed channel matrix and perfect channel state information (CSI) for the BER comparison.
+- QPSK、16QAM 调制及硬判决解调；OFDM IFFT/FFT、循环前缀、资源网格映射。
+- AWGN、独立 Rayleigh MIMO 信道、频率平坦信道网格。
+- 独立模块形式的 LS 导频信道估计与频域线性插值。
+- Python ZF/MMSE 均衡，BER、RMS EVM、MSE 计算。
+- **固定 2×2 信道、Perfect CSI** 条件下的 BER-SNR 扫描与自适应统计。
+- C 语言 **1×1 与 2×2 方阵** ZF/MMSE 均衡；冻结参考向量和 C/Python 数值对齐。
+- Python/C-ctypes 调用路径计时与独立的原生 C 循环计时。
+- 分离的比特、噪声、信道随机流；固定信道 BER 的重复运行一致性验证。
 
-## 2. Project Structure
+### 1.2 尚未实现的内容
 
-- `configs/`: JSON simulation parameters
-- `src/mimo_sim/`: Python signal-processing modules
-- `scripts/`: Simulation, visualization, and validation scripts
-- `c_src/`: C ZF/MMSE implementation and header files
-- `tests/`: Python unit and integration tests
-- `tests/fixtures/`: Frozen numerical reference vectors
-- `docs/`: Development environment and interface documentation
-- `results/`: Generated simulation data and figures
-- `main.py`: Main Python entry point
-- `requirements.txt`: Pinned Python package dependencies
+EPA/EVA 或其他多径信道、空间相关信道、主 BER 扫描的非理想 CSI 接入、C 批处理 OFDM 网格接口、4×4 C 均衡，以及不同信道模型之间共享基础随机样本的严格变量控制，**目前均未完成**。`random_control.enabled` 和 `reuse_realizations` 配置项尚未接入实际开关逻辑。
 
-Important files:
+## 2. 项目目录说明
 
-- `configs/simulation.json`: Simulation settings
-- `src/mimo_sim/equalizer.py`: Python ZF/MMSE algorithms
-- `src/mimo_sim/ber_stopping.py`: Adaptive BER stopping rules
-- `c_src/equalizer.c`: C equalizer implementation
-- `c_src/equalizer.h`: C function declarations
-- `scripts/export_equalizer_vectors.py`: Reference-vector generation
-- `scripts/check_c_equalizer.py`: C/Python numerical comparison
-- `scripts/run_ber_scan.py`: BER-SNR simulation
-- `scripts/plot_constellation.py`: Constellation visualization
-- `tests/fixtures/equalizer_reference.json`: Frozen Python references
+| 路径 | 作用 |
+|---|---|
+| `configs/simulation.json` | 仿真参数、信道系数及随机种子 |
+| `src/mimo_sim/` | Python 收发、信道、均衡、指标、BER 停止及随机流模块 |
+| `scripts/run_ber_scan.py` | 固定信道自适应 BER-SNR 扫描 |
+| `scripts/plot_constellation.py` | QPSK 星座图 |
+| `scripts/plot_adaptive_ber.py` | 自适应 BER 统计样本量可视化 |
+| `scripts/plot_c_validation.py` | C/Python 数值误差可视化 |
+| `scripts/check_c_equalizer.py` | 冻结基准的 C/Python 数值对齐 |
+| `scripts/benchmark_c_python.py` | Python 与 C/ctypes 逐向量耗时比较 |
+| `scripts/export_equalizer_vectors.py` | 冻结基准数据生成，仅在有意更新基准时运行 |
+| `c_src/equalizer.c`、`c_src/equalizer.h` | C 1×1/2×2 ZF/MMSE 实现与接口 |
+| `c_src/benchmark_core.c` | Windows 原生 C 循环耗时测试 |
+| `tests/`、`tests/fixtures/` | 自动化测试及冻结参考 JSON |
+| `results/` | CSV 与 PNG 结果（是否已提交以 Git 状态为准） |
+| `docs/` | 设计、接口、环境及测试方法说明 |
 
-## 3. Development Environment
+## 3. 环境准备
 
-The project was developed and validated using:
+已验证环境：Windows、Python 3.11、VS Code、Git、MSYS2 UCRT64 GCC 16.2.0。Python 依赖以 `requirements.txt` 为准。详细说明见 [`docs/development_environment.md`](docs/development_environment.md)。
 
-- Windows
-- Python 3.11
-- Visual Studio Code
-- Git and GitHub
-- GCC 16.2.0 through MSYS2 UCRT64
-
-Python package dependencies are pinned in `requirements.txt`.
-
-Development software and environment information are documented separately in:
-
-`docs/development_environment.md`
-
-## 4. Installation
-
-Run the following commands from the project root.
-
-### 4.1 Create a virtual environment
+在 **VS Code 的项目根目录** PowerShell 终端中执行：
 
 ```powershell
 python -m venv .venv
-```
-
-Activate it in PowerShell:
-
-```powershell
 .\.venv\Scripts\Activate.ps1
-```
-
-### 4.2 Install Python dependencies
-
-```powershell
 python -m pip install -r requirements.txt
 ```
 
-### 4.3 Check the environment
-
-```powershell
-python --version
-python -m pytest --version
-gcc --version
-```
-
-The GCC command requires the compiler to be available in the current terminal PATH.
-
-## 5. Configuration
-
-Simulation parameters are stored in:
-
-`configs/simulation.json`
-
-The configuration includes:
-
-- FFT size and cyclic prefix length
-- Number of OFDM symbols and active subcarriers
-- Transmit and receive antenna counts
-- Modulation scheme
-- Random seed
-- SNR range and step
-- Channel coefficients
-- Adaptive BER stopping parameters
-
-Algorithm parameters are loaded from the configuration file rather than being embedded in the main simulation script.
-
-Project files are located relative to the project root using Python's `pathlib`.
-
-### Adaptive BER parameters
-
-The performance configuration includes:
-
-```json
-{
-  "target_errors": 200,
-  "max_bits_per_snr": 2016000
-}
-```
-
-These values define the error target per equalizer and the maximum tested bits per SNR point.
-
-Other existing configuration fields, including the channel matrix, must be retained.
-
-## 6. Python Simulation
-
-### 6.1 Run all tests
-
-```powershell
-python -m pytest tests/ -q
-```
-
-The latest verified test run completed with:
-
-`67 passed`
-
-### 6.2 Generate BER-SNR results
-
-```powershell
-python -m scripts.run_ber_scan
-```
-
-Outputs:
-
-- `results/ber_comparison.csv`
-- `results/ber_comparison.png`
-
-The simulation compares ZF and MMSE equalizers using the same transmitted bits, channel, and received noisy signals for each SNR point.
-
-The BER comparison uses a fixed 2x2 channel matrix and perfect CSI.
-
-### 6.3 Generate constellation plots
-
-```powershell
-python -m scripts.plot_constellation
-```
-
-Output:
-
-`results/constellation_comparison.png`
-
-The figure compares:
-
-1. Received QPSK symbols before equalization
-2. Symbols after ZF equalization
-3. Symbols after MMSE equalization
-
-## 7. Adaptive BER Evaluation
-
-A fixed number of simulated frames may produce too few bit errors at high SNR, making BER estimates statistically unreliable.
-
-This project uses two stopping conditions:
-
-1. Both ZF and MMSE accumulate at least the configured target number of bit errors.
-2. The maximum number of tested bits per SNR is reached, using complete simulation frames.
-
-The first condition reached ends the simulation for that SNR.
-
-Both equalizers use the same samples and therefore have the same tested-bit count at each SNR.
-
-The current settings are:
-
-- Target errors per equalizer: 200
-- Maximum tested bits per SNR: 2,016,000
-- Modulation in the current BER experiment: QPSK
-- MIMO configuration: 2x2
-- CSI: Perfect
-- SNR range: 0 to 20 dB, in 2 dB steps
-
-The CSV records:
-
-- `SNR_dB`
-- `ZF_BER`
-- `MMSE_BER`
-- `Bits`
-- `ZF_Errors`
-- `MMSE_Errors`
-- `Stop_Reason`
-
-The possible stopping labels are:
-
-- `target_reached`
-- `max_bits_reached`
-
-When the maximum sample budget is reached before the error target, the estimate is sample-limited.
-
-A measured BER of zero means that no errors were observed in the simulated bits. It does not establish that the true BER is zero.
-
-For independent bit-error observations, the approximate one-sided 95% upper confidence bound after zero errors in N bits is:
-
-`BER_upper ≈ 3 / N`
-
-For N = 2,016,000 bits, this is approximately:
-
-`1.49e-6`
-
-## 8. C Equalizer Implementation
-
-The C implementation is located in:
-
-- `c_src/equalizer.c`
-- `c_src/equalizer.h`
-
-It implements:
-
-- Zero-Forcing equalization
-- MMSE equalization
-- Complex-valued linear-system solving
-
-The current C implementation supports square 1x1 and 2x2 channel matrices.
-
-The channel matrix is stored in row-major order with shape:
-
-`(Nr, Nt)`
-
-Complex values use C99/C11 complex double precision, corresponding to NumPy `complex128`.
-
-### 8.1 Compile the C library
-
-On Windows, install the MSYS2 UCRT64 GCC toolchain.
-
-In PowerShell, add GCC to the current terminal PATH if necessary:
+如果当前终端提示 `gcc` 无法识别，先执行：
 
 ```powershell
 $env:Path = "C:\msys64\ucrt64\bin;" + $env:Path
+gcc --version
 ```
 
-Compile the shared library from the project root:
+当前 Python DLL 加载脚本对 MSYS2 UCRT64 依赖目录采用 `C:\msys64\ucrt64\bin` 路径。其他电脑如安装目录不同，应相应调整加载配置。
 
-```powershell
-gcc -std=c11 -O2 -Wall -Wextra -Wpedantic -shared c_src/equalizer.c -o c_src/equalizer.dll -lm
+## 4. 仿真参数与随机控制
+
+主配置文件：`configs/simulation.json`。当前 BER 实验采用 QPSK、2×2 MIMO、`S=14`、`K=1200`、`Nfft=2048`、`Ncp=144`；扫描 `0～20 dB`，间隔 `2 dB`。
+
+单帧测试比特数：`14 × 1200 × 2 × 2 = 67,200`。每个 SNR 点优先在 ZF 与 MMSE **分别达到 200 个误码**后结束；否则最多运行 30 个完整帧，即 **2,016,000 比特**。
+
+随机控制参数：
+
+```json
+{
+  "bit_seed": 20261106,
+  "noise_seed": 20261107,
+  "channel_seed": 20261108
+}
 ```
 
-The generated DLL is a local build artifact and is not committed to Git.
+上述字段位于配置的 `random_control` 节点。当前 BER 扫描使用独立比特与噪声随机流；由于主信道是固定矩阵，未使用随机信道流。相同配置下两次运行的 CSV 内容已经验证一致。**该结果不能替代不同信道模型间的变量控制验证。**
 
-The current Python DLL-loading script uses the MSYS2 UCRT64 installation path `C:\msys64\ucrt64\bin`. If MSYS2 is installed elsewhere, that loader path must be adjusted before validation.
+主 BER 脚本以**时域接收信号平均功率**确定噪声方差。冻结 Python/C 参考向量的 SNR 和噪声方差定义另行记录，不应混淆。详见 [`docs/adaptive_ber_method.md`](docs/adaptive_ber_method.md)。
 
-### 8.2 C function behavior
+## 5. Python 测试与实验复现
 
-The C API provides:
-
-`zf_equalize_c(...)`
-
-`mmse_equalize_c(...)`
-
-Both functions accept the channel matrix, received vector, dimension, and output buffer. MMSE additionally accepts the noise variance.
-
-The implementations return an integer status code:
-
-- `0`: Success
-- `-1`: Invalid arguments
-- `-2`: Singular or unsolvable system
-
-Detailed function declarations are available in `c_src/equalizer.h`.
-
-## 9. Frozen Python Reference Vectors
-
-Before comparing C results with Python, reference data was generated using the Python implementation and saved to:
-
-`tests/fixtures/equalizer_reference.json`
-
-The reference dataset contains eight cases covering:
-
-- 1x1 normal channel
-- 1x1 weak channel
-- 2x2 normal channel
-- 2x2 near-singular channel
-
-Each channel condition is evaluated at:
-
-- 0 dB SNR
-- 20 dB SNR
-
-The reference data stores complex values as:
-
-`[real, imag]`
-
-The frozen dataset includes channel matrices, received signals, noise variances, and expected ZF/MMSE outputs.
-
-The reference values are intentionally frozen and should not be regenerated simply to make a failing C implementation pass.
-
-The reference-generation script is:
-
-```powershell
-python -m scripts.export_equalizer_vectors
-```
-
-Run this only when intentionally establishing a new reference dataset. It is not required for ordinary validation.
-
-## 10. C/Python Numerical Validation
-
-Compile the C library first, then run:
-
-```powershell
-python -m scripts.check_c_equalizer
-```
-
-The script:
-
-1. Loads the compiled C shared library.
-2. Reads the frozen Python reference dataset.
-3. Converts complex data into contiguous NumPy arrays.
-4. Calls the C functions using `ctypes`.
-5. Compares C results against the frozen Python outputs.
-6. Checks the maximum absolute complex error.
-
-Numerical acceptance tolerance:
-
-`1e-8`
-
-The latest verified validation result was:
-
-- 8 frozen test cases
-- 2 algorithms per case
-- 16 C/Python comparisons passed
-- Maximum absolute error: `1.379e-10`
-
-Passing these reference cases demonstrates numerical agreement for the tested inputs. It does not establish robustness for all possible channel conditions.
-
-## 11. Testing and Verification
-
-Run all Python tests:
+在项目根目录运行：
 
 ```powershell
 python -m pytest tests/ -q
-```
-
-Run the C/Python reference comparison:
-
-```powershell
-python -m scripts.check_c_equalizer
-```
-
-Regenerate BER results:
-
-```powershell
 python -m scripts.run_ber_scan
-```
-
-Regenerate constellation plots:
-
-```powershell
 python -m scripts.plot_constellation
+python -m scripts.plot_adaptive_ber
 ```
 
-Run Python code formatting:
+最近一次完整测试结果：**70 passed**。
+
+输出包括：
+
+- `results/ber_comparison.csv`：SNR、两种 BER、样本比特数、误码数及停止原因。
+- `results/ber_comparison.png`：ZF/MMSE BER-SNR 曲线。
+- `results/constellation_comparison.png`：均衡前后 QPSK 星座图。
+- `results/adaptive_ber_statistics.png`：不同 SNR 下的样本量和停止原因。
+
+高 SNR 下测得 BER 为零只表示当前样本内没有观测到误码。若近似假设误码事件独立，零误码时单侧 95% 置信上界约为 `3/N`；`N=2,016,000` 时约为 `1.49×10^-6`。
+
+## 6. C 模块编译与数值一致性验证
+
+C 接口：`zf_equalize_c()`、`mmse_equalize_c()`；信道矩阵按行优先存储的 `double complex`，仅支持 `n=1` 和 `n=2` 方阵。返回码：`0` 成功、`-1` 输入无效、`-2` 无法求解。`complex128` 与 C 复数内存的兼容性已在当前 GCC/NumPy 环境验证，其他平台需重新测试。
+
+先编译 DLL，再运行验证：
 
 ```powershell
-python -m black src scripts tests main.py
+gcc -std=c11 -O2 -Wall -Wextra -Wpedantic -shared c_src/equalizer.c -o c_src/equalizer.dll -lm
+python -m scripts.check_c_equalizer
+python -m scripts.plot_c_validation
 ```
 
-Python functions include documentation of their purpose, arguments, return values, and relevant exceptions.
+冻结基准文件：`tests/fixtures/equalizer_reference.json`。包括 1×1 正常/弱信道、2×2 正常/近奇异信道，每类在 0 和 20 dB 下测量 ZF/MMSE，合计 **16 项对齐全部通过**；最大绝对误差 **`1.379e-10`**，阈值 **`1e-8`**。
 
-The interface conventions and data dimensions are described in:
+**注意：** 不应为了让 C 测试通过而重新生成冻结参考数据。这些数据不构成任意病态信道的误差上界。
 
-`docs/interfaces.md`
+## 7. C/Python 性能量化
 
-## 12. Results and Limitations
+### 7.1 Python 与 C/ctypes 调用路径
 
-### Observed results
+```powershell
+python -m scripts.benchmark_c_python
+```
 
-In the current fixed-channel 2x2 MIMO-OFDM simulation, MMSE generally shows lower measured BER than ZF over the evaluated low-to-moderate SNR range.
+覆盖 1×1、2×2 两种天线配置，64/256/1200 个独立均衡向量以及 ZF/MMSE，合计 12 组。相同组的 Python 和 C 调用使用相同输入；预热后测量 5 次并取中位数。
 
-At high SNR, some simulation points record zero errors within the maximum sample budget.
+| 算法 | 当前实测加速比范围 |
+|---|---:|
+| ZF | 6.68～8.47 倍 |
+| MMSE | 2.95～3.57 倍 |
 
-The generated CSV records the actual sample counts and error counts so that these results can be interpreted correctly.
+输出：`results/c_python_benchmark.csv` 与 `results/c_python_benchmark.png`。该结论比较的是**当前 Python 逐向量实现与 C/ctypes 逐向量调用路径**；包含接口处理开销，且两者求解实现不同，不代表 C 相对全部 NumPy 实现的普遍加速倍数。本轮12组对比的最大绝对误差约 `4.58e-15`。
 
-### Limitations
+### 7.2 原生 C 循环耗时
 
-- The BER experiment uses a fixed 2x2 channel rather than a large set of randomly generated channel realizations.
-- Perfect CSI is used in the main ZF/MMSE BER comparison.
-- The channel is simplified and does not reproduce all 5G NR propagation or protocol details.
-- The current C equalizer supports 1x1 and 2x2 square matrices only.
-- Near-singular numerical behavior is checked using selected frozen test vectors.
-- High-SNR BER estimates may be limited by the maximum simulated bit count.
-- The current Windows DLL loader assumes a particular MSYS2 installation path.
+```powershell
+gcc -std=c11 -O2 -Wall -Wextra -Wpedantic c_src/benchmark_core.c c_src/equalizer.c -o c_src/benchmark_core.exe -lm
+.\c_src\benchmark_core.exe 2 1200 ZF
+.\c_src\benchmark_core.exe 2 1200 MMSE
+```
 
-Future extensions could include correlated MIMO channels, multipath fading, imperfect CSI, larger antenna configurations, and further C implementation tests.
+12组原生 C 测试统计如下：
 
-## 13. Development Progress
+| 天线配置 | ZF (ns/次) | MMSE (ns/次) |
+|---|---:|---:|
+| 1×1 | 16.115～16.313 | 26.376～27.834 |
+| 2×2 | 51.948～52.922 | 85.808～87.397 |
 
-### Week 1 - Framework and Interfaces
+完整数据：`results/c_core_benchmark.csv`。这项测试**不经过 Python/ctypes**，但仍含 C 循环和函数调用开销；与上一项计时采用不同的输入生成方式和计时流程，不能直接相减求得 ctypes 的纯开销。
 
-Completed:
+`.exe` 和 `.dll` 为本地编译产物，原则上不作为源码交付。
 
-- Project structure
-- Development environment
-- Configuration file
-- Relative project paths
-- Modulation and channel fundamentals
-- Initial algorithm interfaces
-- GitHub repository setup
+## 8. 工程技术文档
 
-### Week 2 - Python MIMO-OFDM Simulation
+| 文档 | 内容 |
+|---|---|
+| [`docs/design.md`](docs/design.md) | 链路方案、模块架构、已实现与计划边界 |
+| [`docs/interfaces.md`](docs/interfaces.md) | Python/C 数据维度、接口、存储规则 |
+| [`docs/c_equalizer_design.md`](docs/c_equalizer_design.md) | C 均衡实现、求解逻辑、误差与原生C计时 |
+| [`docs/c_python_validation.md`](docs/c_python_validation.md) | 冻结向量验证、跨语言性能比较 |
+| [`docs/adaptive_ber_method.md`](docs/adaptive_ber_method.md) | 自适应统计、独立随机流及结果解释 |
+| [`docs/development_environment.md`](docs/development_environment.md) | 开发环境与依赖 |
+| [`docs/theory_notes.md`](docs/theory_notes.md) | 相关理论笔记 |
 
-Completed:
+新增模块、配置项或测试结果时，应与代码一起更新相关 `docs/*.md` 及本 README，避免文档描述落后于实际实现。
 
-- QPSK and 16QAM modulation
-- OFDM modulation and demodulation
-- AWGN and Rayleigh channel modules
-- LS channel estimation
-- ZF and MMSE equalization
-- BER, EVM, and MSE metrics
-- Unit and integration tests
-- BER-SNR comparison
-- Constellation visualization
+## 9. 实施进度与后续方向
 
-### Week 3 - C Implementation and Performance Validation
+**第一周：** 工程框架、配置文件、接口和开发环境。  
+**第二周：** Python 调制/OFDM/信道/均衡、自动化测试、BER曲线及星座图。  
+**第三周：** 冻结 Python 基准、C ZF/MMSE、16项数值对齐、自适应 BER、测试及技术文档。  
+**补充工程基线：** 独立随机流、70项测试、固定信道复现、12组 Python/C-ctypes 性能数据、12组原生 C 计时以及对应文档。
 
-Completed:
+后续计划：跨信道共同基础随机样本控制、空间相关与多径信道、非理想 CSI、C 批处理接口、4×4 扩展，以及严格配对的纯接口开销测试。以上均不应视为当前已完成成果。
 
-- Frozen Python reference dataset
-- 1x1 and 2x2 reference cases
-- Normal, weak, and near-singular channel cases
-- C ZF and MMSE equalizers
-- GCC compilation
-- C/Python numerical comparison
-- Adaptive BER stopping mechanism
-- Automated stopping-rule tests
-- Function documentation improvements
-- Reproducible validation commands
+## 10. 项目仓库
 
-## 14. Repository
-
-GitHub:
-
-https://github.com/Yilin-126/mimo-equalization-simulation
+**GitHub：** https://github.com/Yilin-126/mimo-equalization-simulation

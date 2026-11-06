@@ -30,5 +30,13 @@
     "max_bits_per_snr": 2016000,
     "channel_real": [[1.0, 0.3], [0.2, 0.9]],
     "channel_imag": [[0.2, -0.1], [0.1, -0.2]]
+},
+  "random_control": {
+    "enabled": true,
+    "bit_seed": 20261106,
+    "noise_seed": 20261107,
+    "channel_seed": 20261108,
+    "reuse_realizations": true
+  }
 }
-}
+
