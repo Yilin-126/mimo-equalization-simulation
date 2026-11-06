@@ -59,6 +59,28 @@
     "reference_scenario": "independent",
     "shared_frame_stopping": true,
     "min_frames_per_snr": 20
-  }
+  },
+
+  "multipath_comparison": {
+      "enabled": true,
+      "models": [
+          "flat_rayleigh",
+          "three_tap_multipath"
+      ],
+      "delays_samples": [0, 2, 5],
+      "powers_db": [0.0, -3.0, -6.0],
+      "reference_model": "flat_rayleigh",
+      "noise_policy": "reference_receive_power",
+      "min_frames_per_snr": 20
+  },
+
+  "csi_comparison": {
+    "enabled": true,
+    "channel_model": "three_tap_multipath",
+    "pilot_seed": 20261109,
+    "pilot_amplitude": 1.0,
+    "min_frames_per_snr": 20,
+    "noise_policy": "reference_receive_power"
+}
 }
 

@@ -4,7 +4,11 @@ import csv
 import json
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 import numpy as np
 
 from src.mimo_sim.channel_scenarios import apply_channel_model

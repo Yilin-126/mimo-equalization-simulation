@@ -1,276 +1,57 @@
-# MIMO-OFDM 仿真模块接口规范
+# 模块接口规范
 
-> 文档性质：接口协议｜范围：当前已实现的 Python 与 C 模块
+## 1. 数据与存储约定
 
-## 1. 适用范围及基本约定
+Python使用 `np.complex128`，下标顺序如下。C模块使用C11 `double complex`，矩阵按行主序存储；`ctypes`传输连续的复数双精度数组。
 
-本规范说明当前实现中的数组维度、复数存储、函数输入输出与模块交互条件。项目属于简化物理层链路仿真，并非完整的 5G NR 标准协议实现。
-
-- Python 数组使用 NumPy；复信号通常采用 `complex128`，比特采用 `int8`（取值 0 或 1）。
-- `S`：OFDM 符号数；`K`：有效子载波数；`Nfft`：FFT 点数；`Ncp`：循环前缀采样点数。
-- `Nt`：发射天线数；`Nr`：接收天线数；`B`：比特数。
-- 资源网格维度顺序为**符号、子载波、天线**；完整频域信道网格维度为**符号、子载波、接收天线、发射天线**。
-- 单个资源单元的信号模型为 `y = Hx + n`，其中 `H.shape=(Nr,Nt)`、`x.shape=(Nt,)`、`y.shape=(Nr,)`。
-- Python ZF 支持 `Nr >= Nt` 的满列秩信道；当前 C 接口只支持 `n=1` 或 `n=2` 的方阵。
-
-## 2. 关键数组维度
-
-| 数据对象 | 维度 | 说明 |
+| 对象 | 维度 | 说明 |
 |---|---|---|
-| 原始比特 | `(B,)` | 长度需匹配调制位数 |
-| 调制后的符号向量 | `(B / bits_per_symbol,)` | QPSK 或 16QAM |
-| 有效发送资源网格 | `(S, K, Nt)` | 尚未补零 |
-| IFFT 输入网格 | `(S, Nfft, Nt)` | 中心映射后使用 `ifftshift` |
-| 发送时域信号（含 CP） | `(S, Nfft+Ncp, Nt)` | IFFT 和 CP 插入结果 |
-| 接收时域信号（含 CP） | `(S, Nfft+Ncp, Nr)` | MIMO 信道及 AWGN 后 |
-| 接收 FFT 网格 | `(S, Nfft, Nr)` | 提取有效频点前需 `fftshift` |
-| 有效接收资源网格 | `(S, K, Nr)` | 中心频域切片 |
-| 单资源单元信道 | `(Nr, Nt)` | 复数信道矩阵 |
-| 平坦频域信道网格 | `(S, K, Nr, Nt)` | 同一矩阵广播，**不是多径模型** |
-| 接收向量 | `(Nr,)` | Python 单向量均衡输入 |
-| 发送估计向量 | `(Nt,)` | Python 单向量均衡输出 |
-| LS 导频估计 | 与输入导频数组同形状 | 按元素计算 `Y/X` |
-| 插值信道向量 | `(K,)` | 对实部和虚部分别线性插值 |
+| 资源栅格 | `(S,K,Nt)` | OFDM符号、有效子载波、发送天线 |
+| FFT资源网格 | `(S,Nfft,Nt)` | NumPy FFT顺序 |
+| 时域发送 | `(S,Nfft+CP,Nt)` | 含CP |
+| 时域接收 | `(S,Nfft+CP,Nr)` | 含CP |
+| 单个平坦信道 | `(Nr,Nt)` | 接收天线 × 发送天线 |
+| 多径冲激响应 | `(D+1,Nr,Nt)` | 延迟 × 接收 × 发送 |
+| 频率响应 | `(Nfft,Nr,Nt)` | FFT频点 × 接收 × 发送 |
+| 有效频点信道 | `(K,Nr,Nt)` | 与有效子载波顺序一致 |
 
-主 BER 扫描采用 **Perfect CSI**。导频 LS 估计和插值是独立模块，不能将其误写为已经集成到该主扫描中。
+`S`为OFDM符号数，`K`为有效子载波数，`Nt/Nr`为天线数。FFT频谱映射、`fftshift`顺序须与收发脚本一致。
 
-## 3. Python 模块函数约定
+## 2. 主要Python接口
 
-| 模块／函数 | 输入 | 输出及主要约束 |
+| 接口 | 输入 → 输出 | 约束 |
 |---|---|---|
-| `transmitter.generate_bits` | `num_bits, rng` | `(num_bits,)` 二进制 `int8`，要求正整数长度 |
-| `transmitter.modulate` | `bits, modulation_type` | QPSK/16QAM 归一化复符号向量 |
-| `transmitter.map_to_resource_grid` | `(S,K,Nt), fft_size, K` | `(S,Nfft,Nt)`，资源映射后按 IFFT 顺序排列 |
-| `transmitter.ofdm_modulate` | `(S,Nfft,Nt), cp_length` | `(S,Nfft+Ncp,Nt)` |
-| `receiver.ofdm_demodulate` | `(S,Nfft+Ncp,Nr), cp_length, fft_size` | `(S,Nfft,Nr)` |
-| `receiver.demodulate` | 1 维复符号、调制方式 | 扁平 `int8` 比特数组 |
-| `channel.add_awgn` | 复信号、噪声方差、随机数生成器 | 与原信号同形状的含噪复数组 |
-| `channel.generate_mimo_channel` | `Nt, Nr, rng` | `(Nr,Nt)` 独立 Rayleigh 系数 |
-| `channel.generate_frequency_channel` | `S,K,Nt,Nr,rng` | `(S,K,Nr,Nt)` 平坦信道广播网格 |
-| `channel_estimation.ls_channel_estimate` | 接收导频、参考导频 | 同形状 `Y/X`，参考导频不得含零 |
-| `channel_estimation.interpolate_channel` | 导频估计、升序索引、`K` | `(K,)` 复数插值向量 |
-| `equalizer.zf_equalize` | `y,H` | `(Nt,)`，要求适当维度且满列秩 |
-| `equalizer.mmse_equalize` | `y,H,noise_variance` | `(Nt,)`，方差非负；假设单位发送符号协方差 |
-| `metrics.calculate_ber` | 发送与接收比特 | `[0,1]` 内的浮点 BER |
-| `metrics.calculate_evm` | 参考符号、估计符号 | 归一化 RMS EVM（线性比值） |
-| `metrics.calculate_mse` | 真实、估计信道 | 非负浮点 MSE |
-| `ber_stopping.get_stop_reason` | 两算法误码数、样本数及门限 | `target_reached`、`max_bits_reached` 或 `None` |
-| `random_control.create_rngs` | 包含 `random_control` 的配置字典 | `bits`、`noise`、`channel` 三条独立 NumPy 随机流 |
+| `generate_bits` / `modulate` | 比特 → QPSK/16QAM符号 | 二进制比特及整组长度 |
+| `map_to_resource_grid` / `ofdm_modulate` | `(S,K,Nt)` → `(S,Nfft+CP,Nt)` | `0<K≤Nfft`，有效CP |
+| `ofdm_demodulate` / `demodulate` | 时域接收 → 频域栅格；符号 → 比特 | QPSK、16QAM |
+| `zf_equalize` / `mmse_equalize` | `y:(Nr,)`、`H:(Nr,Nt)` → `(Nt,)` | `Nr≥Nt`；MMSE还需噪声方差 |
+| `create_frame_samples` | 配置、SNR索引、帧索引、形状 → `bits/noise/channel` | 支持场景及跨SNR复用 |
+| `apply_channel_model` | `(Nr,Nt)` → `(Nr,Nt)` | 独立/2接收天线相关Rayleigh |
+| `create_scenario_frame` | 配置与场景 → `bits/noise/base_channel/channel` | 与共享样本机制一致 |
+| `create_multipath_taps` | `(L,Nr,Nt)`、整数延迟、功率dB → `(D+1,Nr,Nt)` | 不重复非负延迟 |
+| `apply_multipath_channel` | 时域TX、抽头 → 时域RX | 块内线性卷积模型 |
+| `multipath_frequency_response` | 多径抽头、FFT大小 → `(Nfft,Nr,Nt)` | `Nfft≥D+1` |
+| `estimate_mimo_channel_ls` | `H_true`、导频噪声、方差、FFT大小 → `H_est` | 理想正交训练、逐频点LS |
+| `equalize_grid` | `(S,K,Nr)`、`(K,Nr,Nt)` → ZF/MMSE `(S,K,Nt)` | 逐有效子载波计算 |
 
-输入合法性与异常行为以源码及对应单元测试为准。上述 `K` 在不同上下文中有可能表示**活动子载波数**或**独立均衡向量数量**；性能脚本中的 `K=64/256/1200` 是后者，不代表 C API 支持整块资源网格输入。
+主要模块路径：`src/mimo_sim/`；`equalize_grid` 位于 `scripts/run_multipath_ber.py`。
 
-## 4. C语言接口与复数数据存储
+## 3. C接口
 
-声明文件：`c_src/equalizer.h`。
+`c_src/equalizer.h` 提供：
 
 ```c
-int zf_equalize_c(
-    const double complex *h,
-    const double complex *y,
-    int n,
-    double complex *x
-);
-
-int mmse_equalize_c(
-    const double complex *h,
-    const double complex *y,
-    int n,
-    double noise_variance,
-    double complex *x
-);
+int zf_equalize_c(const double complex *h, const double complex *y, int n, double complex *x);
+int mmse_equalize_c(const double complex *h, const double complex *y, int n, double noise_variance, double complex *x);
 ```
 
-| 参数 | 约定 |
-|---|---|
-| `h` | `(n,n)` 复数信道矩阵；行优先 `h[rx*n + tx]` |
-| `y` | 长度为 `n` 的接收复数向量 |
-| `n` | 只能为 1 或 2 |
-| `noise_variance` | MMSE 使用，每个接收复样本的非负噪声方差 |
-| `x` | 长度为 `n` 的复数输出缓冲区 |
-| 返回码 | `0` 成功；`-1` 参数无效；`-2` 奇异或无法求解 |
+仅支持 `n=1` 或 `n=2` 方阵，`h`按行主序展平。返回状态：`0`成功；`-1`参数无效；`-2`无法求解。MMSE使用 `(HᴴH+σ²I)x=Hᴴy`，假设发射符号协方差为单位阵。详细约定见 `docs/c_equalizer_design.md`。
 
-C 使用 `double complex`；Python 桥接采用连续 NumPy `complex128` 数据，通过 `ctypes` 传递指针。此内存兼容性已经在**当前 Windows、MSYS2 GCC、NumPy 环境**验证；更换编译器或平台需重新验证 ABI。冻结 JSON 参考数据采用 `[real, imag]` 表示复数，与原始内存布局不是同一概念。
+## 4. 输出与测试
 
-ZF 解线性系统 `H x_hat = y`，MMSE 解 `(H^H H + sigma^2 I)x_hat = H^H y`；当前 C 求解器采用复数高斯消元和部分主元选择。详情见 [`c_equalizer_design.md`](c_equalizer_design.md)。
+- `scripts/run_ber_scan.py`：`ber_comparison.csv/png`
+- `scripts/run_scenario_ber.py`：`scenario_ber_comparison.csv/png`
+- `scripts/run_multipath_ber.py`：`multipath_ber_comparison.csv/png`
+- `scripts/run_csi_ber.py`：`csi_ber_comparison.csv/png`、`csi_mse.csv/png`
 
-## 5. 随机变量与对比实验约定
-
-配置文件 `configs/simulation.json` 中的 `random_control` 分别包含 `bit_seed`、`noise_seed`、`channel_seed`。当前固定信道 BER 脚本只使用比特与噪声随机流，固定信道矩阵不消耗信道随机流。
-
-同一帧的 ZF/MMSE 比较共用发送比特、信道和含噪接收数据。相同配置下两次主 BER 扫描已得到逐行相同的 CSV。
-
-**尚未完成：** 不同信道模型的共同基础样本控制；配置项 `enabled`、`reuse_realizations` 对应的实际开关逻辑。未来多信道实验需预先定义一致的基础比特、噪声、信道随机样本及相同的 SNR/归一化口径，不能仅凭“种子相同”认定变量已控制。
-
-## 6. 验证基线与文档关联
-
-- Python 自动化测试：最新验收 **70 passed**。
-- 冻结 C/Python 数值对齐：8 组场景 × 2 种算法 = **16 项全部通过**；最大绝对误差 `1.379e-10`，验收阈值 `1e-8`。
-- Python/C-ctypes 调用路径计时：1×1、2×2，独立向量数 64/256/1200，ZF/MMSE 共 12 组。
-- 原生 C 循环计时：另外 12 组；不经过 Python，但输入和计时方法与上一组不同。
-
-相关说明：[`design.md`](design.md)、[`c_python_validation.md`](c_python_validation.md)、[`adaptive_ber_method.md`](adaptive_ber_method.md)。
-
-## 7. 尚未实现的接口
-
-当前基线**不包含** EPA/EVA 多径接口、空间相关信道场景统一对比、非理想 CSI 主 BER 流程、C 批量 OFDM 网格接口以及 4×4 C 均衡器。后续开发应先更新接口规范，再扩展实现与单元测试。
-
-
-## 8. 跨场景随机样本接口
-
-### 8.1 接口定义
-
-```python
-create_frame_samples(
-    config,
-    snr_index,
-    frame_index,
-    num_bits,
-    noise_shape,
-    channel_shape,
-)
-```
-
-返回字典包含：
-
-| 字段 | 数据类型 | 含义 |
-|---|---|---|
-| `bits` | `np.int8` | 固定长度的发送比特序列 |
-| `noise` | `np.complex128` | 单位方差复高斯噪声基础样本 |
-| `channel` | `np.complex128` | 单位方差复高斯信道基础样本 |
-
-### 8.2 复现规则
-
-使用配置文件中的三个独立种子：
-
-- `bit_seed`
-- `noise_seed`
-- `channel_seed`
-
-并结合 `snr_index` 和 `frame_index` 初始化随机数生成器。
-
-相同输入必须生成相同样本，不允许因为其他场景提前停止而改变后续样本。
-
-### 8.3 同组对比要求
-
-1. ZF/MMSE比较必须使用相同的发送比特、信道及噪声。
-2. 不同信道比较必须使用相同的发送比特和基础噪声样本。
-3. 随机信道比较应在明确的信道变换规则下复用共同基础随机样本。
-4. 必须固定SNR计算方式及噪声归一化策略。
-5. 不同场景应采用一致的资源单元顺序、维度约定及性能指标计算方式。
-
-当前该机制已用于固定信道ZF/MMSE BER扫描，并通过跨场景基础样本测试。
-
-完整的相关信道、多径信道及非理想CSI性能比较尚未实现。
-
-
-
-## 9. 多场景信道接口规范
-
-### 9.1 信道模型变换
-
-模块：`src/mimo_sim/channel_scenarios.py`
-
-接口：
-
-```python
-apply_channel_model(
-    base_channel,
-    model,
-    correlation=0.0,
-)
-```
-
-参数说明：
-
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| `base_channel` | `np.complex128` | 基础信道矩阵，形状 `(Nr, Nt)` |
-| `model` | `str` | `independent` 或 `rx_correlated` |
-| `correlation` | `float` | 接收端相关系数，范围 `0 ≤ ρ < 1` |
-
-返回值：
-
-- `np.complex128` 信道矩阵，形状 `(Nr, Nt)`。
-- 当前相关信道模型要求 `Nr=2`。
-
-### 9.2 多场景样本生成
-
-接口：
-
-```python
-create_scenario_frame(
-    config,
-    snr_index,
-    frame_index,
-    scenario_id,
-    model,
-    num_bits,
-    noise_shape,
-    num_rx,
-    num_tx,
-    correlation=0.0,
-)
-```
-
-返回字典：
-
-| 字段 | 数据类型 | 说明 |
-|---|---|---|
-| `bits` | `np.int8` | 发送比特 |
-| `noise` | `np.complex128` | 单位方差基础噪声 |
-| `base_channel` | `np.complex128` | 基础Rayleigh信道 |
-| `channel` | `np.complex128` | 场景变换后的信道 |
-
-### 9.3 随机数控制参数
-
-配置文件：`configs/simulation.json`
-
-| 参数 | 含义 |
-|---|---|
-| `bit_seed` | 发送比特随机种子 |
-| `noise_seed` | 噪声随机种子 |
-| `channel_seed` | 信道随机种子 |
-| `reuse_realizations` | 是否跨场景复用基础随机样本 |
-| `reuse_across_snr` | 是否跨SNR复用相同帧编号的基础随机样本 |
-
-当两个复用开关均为 `true` 时，相同帧编号在不同信道场景和SNR点下使用相同基础样本。
-
-### 9.4 多场景BER接口
-
-主程序：
-
-`scripts/run_scenario_ber.py`
-
-输出：
-
-- `results/scenario_ber_comparison.csv`
-- `results/scenario_ber_comparison.png`
-
-CSV字段：
-
-| 字段 | 说明 |
-|---|---|
-| `Scenario` | 信道场景名称 |
-| `SNR_dB` | 参考信道接收SNR |
-| `Method` | ZF或MMSE |
-| `BER` | 实测误码率 |
-| `Bits` | 累计测试比特数 |
-| `Errors` | 累计误码数 |
-| `Stop_Reason` | 停止原因 |
-
-同一SNR下所有场景和均衡算法必须共享统计帧数。
-
-噪声方差由参考信道接收功率确定，其他场景使用相同噪声实现。
-
-### 9.5 接口验证
-
-当前已完成：
-
-- 场景随机样本复用测试
-- 独立/相关Rayleigh信道模型测试
-- 多场景BER集成测试
-- 跨SNR样本复用集成测试
-
-全项目Python自动化测试：**93项通过**。
-
-尚未实现的接口扩展包括EPA/EVA多径信道、非理想CSI及更大规模相关MIMO信道。
+BER结果记录SNR、算法/场景、BER、比特数、误码数、停止原因。当前测试105项通过，完整结果见 `docs/final_validation_report.md`。
